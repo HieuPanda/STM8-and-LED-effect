@@ -1,0 +1,90 @@
+Giao tiếp SPI cứng
+
+STM8S005K6 : PE5 SPI_NSS Mặc định ở mức cao sẽ kéo xuống thấp để báo hiệu bắt đầu giao tiếp
+				PC7 MISO
+				PC6 MOSI
+				PC5 SCK
+				
+In a master configuration, the serial clock is generated on the SCK pin.
+Follow the procedure below to configure the SPI in master mode:
+1. Select the BR[2:0] bits to define the serial clock baud rate (see SPI_CR1 register).
+2. Select the CPOL and CPHA bits to define one of the four relationships between the 
+data transfer and the serial clock (see Figure 93).
+3. Configure the LSBFIRST bit in the SPI_CR1 register to define the frame format.
+4. In Hardware mode, connect the NSS pin to a high-level signal during the complete data 
+transmit sequence. In software mode, set the SSM and SSI bits in the SPI_CR2 
+register.
+5. Set the MSTR and SPE bits (they remain set only if the NSS pin is connected to a highlevel signal)
+
+Nếu truyền bit0 trước thì là LSB tức là LOW By Firt 
+Tần số tối đa của 74hc595 là 25Mhz ở 4.5V
+Có nhiều mode : - Clock lên cao thì đọc data , clock xuống thấp thì write data hoặc ngược lại
+CPOL xác định trạng thái chân SCL khi ko truyền dữ liệu
+CPHA thời điểm mà dữ liệu được lấy mẫu CPHA = 0 dữ liệu lấy mẫu ở cạnh lên(dữ liệu sẽ được dọc từ MISO tại cạnh lên), CPHA = 1 dữ liệu lấy mẫu ở cạnh dưới
+
+B1 enable clock spi
+B2 cấu hình các chân 
+B3 cấu hình SPI : - SPI_CR1: CPHA bit0, CPOL bit1, Mater selection bit2, BR[3:5] baud rate, SPI enable bit6,  MSB hay LSB bit7, 
+							cấu hình CPHA =0; CPOL =0 , chế độ mater = 1, cài đặt baud rate, SPE = 1; MSB=0 LSB=1
+B4: Hàm truyền dữ liệu : đợi cờ TXE = 1, để đảm bảo là thanh ghi SPI_DR trống
+						 Ghi dữ liệu vào thanh ghi SPI_DR.
+						 Đợi cờ TXE và cờ BSY(busy) lên.
+						 xóa cờ OVR bằng cách đọc lại thanh ghi SPI_DR và thanh ghi SPI_SR.
+B5: Sau khi truyền xong thì tạo 1 xung của chân NSS.
+							
+void SPI_init(void)
+{
+	//cấu hình các chân GPIO chân MOSI, chân CLK, chân NSS
+   PC_DDR_DDR6         = 1;  // MOSI
+   PC_CR1_C16          = 1;  
+   PC_ODR_ODR6         = 0;   
+   
+   PC_DDR_DDR5         = 1;  //CLK 
+   PC_CR1_C15          = 1;  
+   PC_ODR_ODR5         = 0;  
+   
+   PE_DDR_DDR5         = 1;  //CS
+   PE_CR1_C15          = 1;  
+   PE_ODR_ODR5         = 0; 
+	
+	
+	//Cấu hình thanh ghi CR1
+	SPI_CR1_SPE = 0;
+	SPI_CR1_CPHA = 0;
+	SPI_CR1_CPOL = 0;
+	SPI_CR1_MSTR = 1; // chọn LSB hoặc MSB, chọn truyền bit thấp trước
+	SPI_CR1_BR = 2; // fMater/8 => 16/8 = 2Mhz
+    SPI_CR2_SSM = 1;
+    SPI_CR2_SSI = 1;
+	SPI_CR1_LSBFIRST = 0;
+	SPI_CR1_SPE = 1;
+}
+							
+
+void SPI_Transmit_HC595(uint8_t data)
+{
+    while(!(SPI_SR &(1<<1)));
+    SPI_DR = data;
+    while(!(SPI_SR &(1<<1)));
+//    while (((SPI_SR)&(1<<7)));
+    uint8_t temp = SPI_DR;
+    temp = SPI_SR;  
+}
+
+//Hàm nhận chưa test
+uint8_t SPI_Receive_HC595()
+{
+	uint8_t data;
+    //đợi cho tới khi nhận được dữ liệu
+	while(!(SPI_SR & MASK_SPI_SR_RXNE));
+	data = SPI_DR;
+	return data;
+}
+
+void HC595_sendData(uint8_t data)
+{
+  SPI_Transmit_HC595(data);
+  HC595_LATCH = HIGH; 
+  HC595_LATCH = LOW;
+}
+				

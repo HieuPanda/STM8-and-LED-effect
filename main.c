@@ -2,7 +2,6 @@
 #include <intrinsics.h>
 #include "delay.h"
 #include "ledEffect.h"
-#include "sspi.h"
 
 #define STD_ON 1
 #define STD_OFF 0
@@ -50,6 +49,8 @@ typedef union
 const uint8_t  dosangtb[16] = {0, 1, 2, 3 , 5, 7, 10, 15, 20, 26, 32, 39, 47, 60, 75, 90}; 
 uint8_t  dosang[NUMBER_LED];
 HC595_RegType  HC595_REG;
+
+void SPI_Transmit_HC595(uint8_t data);
 
 // khai bao con tro ham de tro den cac hieu ung
 void (*ptr)(uint8_t * , uint8_t const *);
@@ -122,12 +123,58 @@ void HC595_Init(void)
 
 void HC595_sendData(uint8_t data)
 {
-  Sspi_Transmit(data);
+  SPI_Transmit_HC595(data);
   HC595_LATCH = HIGH;
   HC595_LATCH = LOW;
 }
 
+void SPI_init(void)
+{
+	//c?u hình các chân GPIO chân MOSI, chân CLK, chân NSS
+   PC_DDR_DDR6         = 1;  // MOSI
+   PC_CR1_C16          = 1;  
+   PC_ODR_ODR6         = 0;   
+   
+   PC_DDR_DDR5         = 1;  //CLK 
+   PC_CR1_C15          = 1;  
+   PC_ODR_ODR5         = 0;  
+   
+   PE_DDR_DDR5         = 1;  //CS
+   PE_CR1_C15          = 1;  
+   PE_ODR_ODR5         = 0; 
+	
+	
+	//C?u hình thanh ghi CR1
+	SPI_CR1_SPE = 0;
+	SPI_CR1_CPHA = 0;
+	SPI_CR1_CPOL = 0;
+	SPI_CR1_MSTR = 1;
+	SPI_CR1_BR = 0; // fMater/8 => 16/8 = 2Mhz
+	SPI_CR1_LSBFIRST = 0;
+        SPI_CR2_SSM = 1;
+        SPI_CR2_SSI = 1;
+	SPI_CR1_SPE = 1;
+}
+							
 
+void SPI_Transmit_HC595(uint8_t data)
+{
+    while(!(SPI_SR &(1<<1)));
+    SPI_DR = data;
+    while(!(SPI_SR &(1<<1)));
+//    while (((SPI_SR)&(1<<7)));
+    uint8_t clearBitOvr = SPI_DR;
+    clearBitOvr = SPI_SR;  
+}
+
+uint8_t SPI_Receive_HC595()
+{
+	uint8_t data;
+    //d?i cho t?i khi nh?n du?c d? li?u
+	while(!(SPI_SR & MASK_SPI_SR_RXNE));
+	data = SPI_DR;
+	return data;
+}
 int main( void )
 {
   
@@ -135,11 +182,11 @@ int main( void )
     Init_CpuClock();
     Init_Port();
     Init_Timer2();
-    HC595_Init();
+//    HC595_Init();
+       SPI_init();
     __enable_interrupt();
-  
     while(1)
-    {
+    {  
         hieuUngSaoBang(dosang, (uint8_t*)dosangtb, 100);
     }
 }
@@ -286,6 +333,7 @@ __interrupt void TIM2_OVR_UIF_handler(void)
     {
         CountTime = 0;
     }
+//    SPI_Transmit_HC595(HC595_REG.ODR);
     HC595_sendData(HC595_REG.ODR);
     TIM2_SR1_UIF   = 0;
 }
